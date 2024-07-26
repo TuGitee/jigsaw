@@ -47,12 +47,13 @@
         .puzzle {
             list-style: none;
             box-sizing: content-box;
-            width: fit-content;
             margin: 0px;
             padding: 0px;
             display: grid;
             grid-template-columns: repeat(var(--col, auto-fill), var(--size));
             grid-auto-rows: var(--size);
+            border-right: 1px solid #eee;
+            border-bottom: 1px solid #eee;
         }
 
         .puzzle .puzzle-item {
@@ -60,7 +61,8 @@
             background-size: calc(var(--size) * var(--col));
             background-position: var(--left) var(--top);
             box-sizing: border-box;
-            border: 1px solid #eee;
+            border-left: 1px solid #eee;
+            border-top: 1px solid #eee;
             padding: 0px;
             overflow: hidden;
             color: #fffc;
