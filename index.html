@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拼图</title>
+    <style>
+        header {
+            width: 100%;
+            display: flex;
+            margin-bottom: 5px;
+            align-items: center;
+        }
+
+        header label {
+            width: 30%;
+            height: 100%;
+        }
+
+        header img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        header span {
+            font-size: 16px;
+            margin: 0px 15px;
+            line-height: 1.5;
+            text-align: center;
+            flex: 1;
+        }
+
+        #puzzle-box {
+            --size: calc(var(--total) / var(--col));
+            width: var(--total);
+            transition: .3s;
+            margin: calc(50vh - 0.7 * var(--total)) auto 0;
+            padding: 0px;
+            box-sizing: content-box;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .puzzle {
+            list-style: none;
+            box-sizing: content-box;
+            width: fit-content;
+            margin: 0px;
+            padding: 0px;
+            display: grid;
+            grid-template-columns: repeat(var(--col, auto-fill), var(--size));
+            grid-auto-rows: var(--size);
+        }
+
+        .puzzle .puzzle-item {
+            background-image: var(--img);
+            background-size: calc(var(--size) * var(--col));
+            background-position: var(--left) var(--top);
+            box-sizing: border-box;
+            border: 1px solid #eee;
+            padding: 0px;
+            overflow: hidden;
+            color: #fffc;
+            text-shadow: 0px 0px 5px #0008;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            cursor: pointer;
+        }
+
+        .puzzle-item.blank {
+            background: initial;
+            color: initial;
+            cursor: initial;
+        }
+
+        .mode-change {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-around;
+            align-content: center;
+        }
+
+        .mode-change div {
+            flex: 1;
+        }
+
+        #image {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root">
+        <div id="puzzle-box" :style="{'--col': col, '--total': width, '--img': `url(${imgUrl})`}">
+            <header>
+                <label for="image"><img :src="imgUrl" /></label>
+                <input type="file" id="image" accept="image/*" @change="handleChange" />
+                <span>请根据左图完成拼图 <br />点击空白旁边的物块移动至空白位置</span>
+            </header>
+
+            <ul class="puzzle" ref="puzzle">
+                <template v-for="(cols, rowIndex) in positionList">
+                    <li v-for="(item, colIndex) in cols" :key="item.id" @click="move(rowIndex, colIndex)"
+                        class="puzzle-item" :class="{'blank':item.isBlank}" :style="{
+                            '--left': `${item.colIndex * 100 / (col-1)}%`, 
+                            '--top': `${item.rowIndex * 100 / (row-1)}%`,
+                        }">
+                        {{item.id}}
+                    </li>
+                </template>
+            </ul>
+            <div class="mode-change">
+                <button @click="setMode(3)" :disabled="row === 3">简单模式</button>
+                <button @click="setMode(5)" :disabled="row === 5">中等模式</button>
+                <button @click="setMode(10)" :disabled="row === 10">困难模式</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vue@latest/dist/vue.min.js"></script>
+    <script>
+        const { ref, computed, watch, nextTick } = Vue;
+        new Vue({
+            el: '#root',
+            setup() {
+                const mode = parseInt(localStorage.getItem('mode')) || 3;
+                const row = ref(mode);
+                const col = ref(mode);
+                const blockNum = computed(() => row.value * col.value)
+                const positionList = ref([]);
+
+                const IMG_URL_KEY = 'imgUrl';
+                const IMG_URL = "https://pic2.zhimg.com/v2-d9aead2404a6b7e10b6373e99a90bfce_r.jpg?source=1940ef5c";
+                const img = localStorage.getItem(IMG_URL_KEY) || IMG_URL;
+                const imgUrl = ref(img);
+
+                const isHorizontal = ref(window.innerWidth * 1.5 > window.innerHeight)
+                const width = computed(() => {
+                    if (isHorizontal.value) {
+                        return `min(${col.value * 100}px, ${95 - col.value * 3}vmin)`
+                    } else {
+                        return `min(${col.value * 100}px, 90vmin)`
+                    }
+                })
+                window.addEventListener('resize', () => {
+                    isHorizontal.value = window.innerWidth * 1.5 > window.innerHeight
+                })
+
+                if (img.startsWith('data:image/png;base64,')) {
+                    imgUrl.value = URL.createObjectURL(base64ToBlob(img, 'image/png'))
+                }
+
+                watch([row, col], () => {
+                    const arr = new Array(row.value * col.value).fill(0).map((_, i) => i).sort(() => Math.random() - 0.5);
+                    const list = [];
+                    for (let i = 0; i < blockNum.value; i += col.value) {
+                        list.push(arr.slice(i, i + col.value).map((item) => ({
+                            rowIndex: Math.floor(item / col.value),
+                            colIndex: item % col.value,
+                            id: item + 1,
+                            isBlank: item === blockNum.value - 1
+                        })));
+                    }
+                    positionList.value = list;
+                }, { immediate: true })
+
+                watch(positionList, () => {
+                    if (judge()) {
+                        nextTick(() => {
+                            alert('恭喜你，拼图成功！');
+                        })
+                    }
+                }, { deep: true })
+
+                function base64ToBlob(base64Data, contentType) {
+                    contentType = contentType || '';
+                    if (base64Data.indexOf(';base64,') !== -1) {
+                        base64Data = base64Data.split(';base64,')[1];
+                    }
+                    const byteCharacters = atob(base64Data);
+                    const byteArrays = [];
+
+                    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+                        const slice = byteCharacters.slice(offset, offset + 512);
+
+                        const byteNumbers = new Array(slice.length);
+                        for (let i = 0; i < slice.length; i++) {
+                            byteNumbers[i] = slice.charCodeAt(i);
+                        }
+
+                        const byteArray = new Uint8Array(byteNumbers);
+                        byteArrays.push(byteArray);
+                    }
+
+                    return new Blob(byteArrays, { type: contentType });
+                }
+
+                function judge() {
+                    for (let i = 0; i < blockNum.value; i++) {
+                        if (positionList.value[Math.floor(i / col.value)][i % col.value].id !== i + 1) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+
+                function move(rowIndex, colIndex) {
+                    const posArray = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+                    for (let i = 0; i < posArray.length; i++) {
+                        const [nextX, nextY] = posArray[i];
+                        const newRowIndex = rowIndex + nextY;
+                        const newColIndex = colIndex + nextX;
+                        if (newRowIndex >= 0 && newRowIndex < row.value && newColIndex >= 0 && newColIndex < col.value && positionList.value[newRowIndex][newColIndex].isBlank) {
+                            const temp = positionList.value[rowIndex][colIndex];
+                            positionList.value[rowIndex][colIndex] = positionList.value[newRowIndex][newColIndex];
+                            positionList.value[newRowIndex].splice(newColIndex, 1, temp);
+                            return;
+                        }
+                    }
+                }
+
+                function handleChange(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const img = new Image();
+                        img.src = URL.createObjectURL(file);
+                        img.onload = function () {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            const width = img.width;
+                            const height = img.height;
+                            const size = Math.min(width, height);
+                            canvas.width = size;
+                            canvas.height = size;
+                            ctx.drawImage(img, (width - size) / 2, (height - size) / 2, size, size, 0, 0, size, size);
+                            canvas.toBlob(blob => {
+                                URL.revokeObjectURL(imgUrl.value);
+                                imgUrl.value = URL.createObjectURL(blob);
+                            })
+                            localStorage.setItem(IMG_URL_KEY, canvas.toDataURL());
+                            URL.revokeObjectURL(img.src);
+                        }
+                    }
+                    e.target.value = '';
+                }
+
+                function setMode(num) {
+                    row.value = num;
+                    col.value = num;
+                    localStorage.setItem('mode', num);
+                }
+
+                return {
+                    row, col, positionList, imgUrl, blockNum, setMode, move, handleChange, width
+                }
+            },
+        })
+    </script>
+</body>
+
+</html>
